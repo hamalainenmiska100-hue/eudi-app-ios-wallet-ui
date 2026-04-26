@@ -1,0 +1,63 @@
+name: Build Demo Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-demo-unsigned-ipa.yml'
+      - 'EudiReferenceWallet.xcodeproj/**'
+      - 'Wallet/**'
+      - 'Modules/**'
+
+jobs:
+  build-demo-unsigned-ipa:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project EudiReferenceWallet.xcodeproj \
+            -scheme "EUDI Wallet Demo"
+
+      - name: Archive (no code signing)
+        run: |
+          xcodebuild archive \
+            -project EudiReferenceWallet.xcodeproj \
+            -scheme "EUDI Wallet Demo" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/EudiWalletDemo.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Build unsigned IPA
+        run: |
+          APP_PATH=$(find "$RUNNER_TEMP/EudiWalletDemo.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in archive output"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/Payload/"
+
+          mkdir -p dist
+          (cd "$RUNNER_TEMP" && zip -qry "$GITHUB_WORKSPACE/dist/EUDI-Wallet-Demo-unsigned.ipa" Payload)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EUDI-Wallet-Demo-unsigned-ipa
+          path: dist/EUDI-Wallet-Demo-unsigned.ipa
+          if-no-files-found: error
